@@ -1,353 +1,312 @@
-from __future__ import annotations
+'''
+* Supermercado que tiene clientes, proveedores y almacenes. 
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
-from enum import Enum, auto
+* Los clientes compran productos y los almacenes proporcionan productos. 
+
+* Los productos puedeb ser de distintos tipos (frescos, refrigerados, congelados, en conserva, etc.) 
+  y cada tipo tiene sus propias características.
+
+* Clientes y proveedores se dan de alta. 
+
+* Cuando los clientes inician una compra se les proporciona una cesta vacía 
+  a la que van añadiendo o quitando productos. 
+
+* Cuando la cesta tiene los productos deseados los clientes confirman la compra. 
+
+* Cuando se confirma la compra el supermercado comprueba si hay existencias 
+  en los almacenes.
+
+* Si las hay solicita el pago al cliente, sino se eleva una excepción. 
+
+* Si el pago se realiza correctamente se actualizan la compra se da por realizada y 
+  se actualizan las existencias del almacén correspondiente. 
+
+* Si como resultado de la compra las existencias de un producto bajan por debajo 
+  de un cierto umbral se hace un pedido a un proveedor para reponer existencias.
+'''
+
+
+from enum import Enum
+
 
 class TipoProducto(Enum):
-    FRESCO = auto()
-    REFRIGERADO = auto()
-    CONGELADO = auto()
-    CONSERVA = auto()
+    CONGELADO = 1
+    FRESCO = 2
+    ENCONSERVA = 3
+    REFRIGERADO = 4
 
 
-@dataclass(frozen=True)
 class Producto:
-    ''' Para mantener simplicidad suponemos producto inmutable '''
-
-    # identificador único (stock keeping unit)
-    sku: str
-    nombre: str
-    precio: float
-    tipo: TipoProducto 
+    def __init__(self, sku, nombre, precio, tipo_producto):
+        self.sku = sku
+        self.nombre = nombre
+        self.precio = precio
+        self.tipo = tipo_producto  # TipoProducto
 
 
-@dataclass
 class Cesta:
-    """Cesta de compra: sku -> cantidad."""
-    lineas: Dict[str, int] = field(default_factory=dict)
+    def __init__(self):
+        # lineas: sku -> cantidad
+        self.lineas = {}
 
-    def anadir(self, sku: str, cantidad: int = 1) -> None:
+    def anadir(self, sku, cantidad):
         if cantidad <= 0:
-            raise ValueError("La cantidad a añadir debe ser > 0")
-        self.lineas[sku] = self.lineas.get(sku, 0) + cantidad
+            raise ValueError("Cantidad inválida")
+        if sku not in self.lineas:
+            self.lineas[sku] = 0
+        self.lineas[sku] += cantidad
 
-    def quitar(self, sku: str, cantidad: int = 1) -> None:
+    def quitar(self, sku, cantidad):
         if cantidad <= 0:
-            raise ValueError("La cantidad a quitar debe ser > 0")
+            raise ValueError("Cantidad inválida")
         if sku not in self.lineas:
             return
         self.lineas[sku] -= cantidad
         if self.lineas[sku] <= 0:
             del self.lineas[sku]
 
-    def vaciar(self) -> None:
-        self.lineas.clear()
+    def vacia(self):
+        return len(self.lineas) == 0
 
-    def esta_vacia(self) -> bool:
-        return not self.lineas
-
-
-@dataclass
-class StockItem:
-    producto: Producto
-
-    # cantidad actual en stock
-    cantidad: int
-
-    # umbral para disparar reposición
-    umbral_reposicion: int
-
-    # cantidad objetivo a reponer (ejemplo: reponer hasta 10 unidades)
-    objetivo_reposicion: int 
-
-    def necesita_reposicion(self) -> bool:
-        return self.cantidad < self.umbral_reposicion
-
-    def cantidad_a_pedir(self) -> int:
-        # Ejemplo: reponer hasta "objetivo_reposicion"
-        return max(0, self.objetivo_reposicion - self.cantidad)
+    def vaciar(self):
+        self.lineas = {}
 
 
-@dataclass
+
+class Entidad:
+    def __init__(self, id, nombre):
+        self.id = id
+        self.nombre = nombre
+
+class Cliente(Entidad):
+    def __init__(self, id, nombre, metodo_pago):
+        super().__init__(id, nombre)
+        self.metodo_pago = metodo_pago
+
+class Proveedor(Entidad):
+    def __init__(self, id, nombre, catalogo_skus):
+        super().__init__(id, nombre)
+        self.catalogo_skus = set(catalogo_skus)
+
+    def puede_servir(self, sku):
+        return sku in self.catalogo_skus
+
+    def servir_pedido(self, pedido):
+        # Simulación: siempre sirve
+        return True
+
+
+class PedidoProveedor:
+    def __init__(self, proveedor, almacen, lineas):
+        self.proveedor = proveedor
+        self.almacen = almacen
+        self.lineas = lineas  # [(sku, cantidad), ...]
+        self.estado = "CREADO"
+
+    def enviar(self):
+        self.estado = "ENVIADO"
+
+    def recibir(self):
+        self.estado = "RECIBIDO"
+
+
 class Almacen:
-    id_almacen: str
-    inventario: Dict[str, StockItem] = field(default_factory=dict)  # sku -> StockItem
+    def __init__(self, id_almacen):
+        self.id_almacen = id_almacen
+        self.productos = {}   # sku -> Producto
+        self.stock = {}       # sku -> cantidad
+        self.umbral = {}      # sku -> umbral reposición
+        self.objetivo = {}    # sku -> objetivo reposición
 
-    def hay_existencias(self, sku: str, cantidad: int) -> bool:
-        item = self.inventario.get(sku)
-        return item is not None and item.cantidad >= cantidad
+    def alta_producto(self, producto, cantidad_inicial, umbral_reposicion, objetivo_reposicion):
+        self.productos[producto.sku] = producto
+        self.stock[producto.sku] = cantidad_inicial
+        self.umbral[producto.sku] = umbral_reposicion
+        self.objetivo[producto.sku] = objetivo_reposicion
 
-    def reservar_disponible(self, cesta: Cesta) -> bool:
-        """Chequeo simple: ¿hay stock para todas las líneas?"""
+    def hay_existencias(self, sku, cantidad):
+        return sku in self.stock and self.stock[sku] >= cantidad
+
+    def puede_servir_cesta(self, cesta):
         for sku, qty in cesta.lineas.items():
             if not self.hay_existencias(sku, qty):
                 return False
         return True
 
-    def descontar(self, sku: str, cantidad: int) -> None:
-        if not self.hay_existencias(sku, cantidad):
-            raise RuntimeError(f"Stock insuficiente para sku={sku}")
-        self.inventario[sku].cantidad -= cantidad
+    def total_cesta(self, cesta):
+        total = 0.0
+        for sku, qty in cesta.lineas.items():
+            total += self.productos[sku].precio * qty
+        return total
 
-    def reposiciones_necesarias(self) -> List[Tuple[str, int]]:
-        """
-        Devuelve lista de (sku, cantidad_a_pedir) para los items
-        que han caído por debajo del umbral.
-        """
-        pedidos: List[Tuple[str, int]] = []
-        for sku, item in self.inventario.items():
-            if item.necesita_reposicion():
-                qty = item.cantidad_a_pedir()
-                if qty > 0:
-                    pedidos.append((sku, qty))
+    def descontar_cesta(self, cesta):
+        for sku, qty in cesta.lineas.items():
+            if not self.hay_existencias(sku, qty):
+                raise RuntimeError("Stock insuficiente durante el descuento")
+            self.stock[sku] -= qty
+
+    def reposiciones_necesarias(self):
+        pedidos = []
+        for sku in self.stock:
+            if self.stock[sku] < self.umbral[sku]:
+                cantidad_a_pedir = self.objetivo[sku] - self.stock[sku]
+                if cantidad_a_pedir > 0:
+                    pedidos.append((sku, cantidad_a_pedir))
         return pedidos
 
-    def recibir_reposicion(self, sku: str, cantidad: int) -> None:
-        if cantidad <= 0:
-            return
-        if sku not in self.inventario:
-            raise KeyError(f"SKU {sku} no existe en este almacén")
-        self.inventario[sku].cantidad += cantidad
-
-
-class EstadoPedido(Enum):
-    CREADO = auto()
-    ENVIADO = auto()
-    RECIBIDO = auto()
-    CANCELADO = auto()
-
-
-@dataclass
-class PedidoProveedor:
-    proveedor_id: str
-    almacen_id: str
-    lineas: List[Tuple[str, int]]  # [(sku, qty), ...]
-    estado: EstadoPedido = EstadoPedido.CREADO
-
-    def enviar(self) -> None:
-        if self.estado != EstadoPedido.CREADO:
-            return
-        self.estado = EstadoPedido.ENVIADO
-
-    def marcar_recibido(self) -> None:
-        if self.estado != EstadoPedido.ENVIADO:
-            return
-        self.estado = EstadoPedido.RECIBIDO
-
-
-@dataclass
-class Proveedor:
-    id_proveedor: str
-    nombre: str
-    # catálogo simple: sku -> precio_compra (no se usa mucho aquí)
-    catalogo: Dict[str, float] = field(default_factory=dict)
-
-    def crear_pedido(self, almacen_id: str, lineas: List[Tuple[str, int]]) -> PedidoProveedor:
-        # En un sistema real: validar catálogo, plazos, etc.
-        return PedidoProveedor(self.id_proveedor, almacen_id, lineas)
-
-
-# =========================
-# Clientes y pago
-# =========================
-
-@dataclass
-class Cliente:
-    id_cliente: str
-    nombre: str
-    metodo_pago: str  # "tarjeta", "bizum", etc. (simplificado)
-
-    def iniciar_compra(self) -> Cesta:
-        return Cesta()
-
-
-@dataclass
-class ResultadoPago:
-    ok: bool
-    motivo: Optional[str] = None
-    id_transaccion: Optional[str] = None
+    def recibir_reposicion(self, sku, cantidad):
+        if sku not in self.stock:
+            raise KeyError("SKU no existe en el almacén")
+        self.stock[sku] += cantidad
 
 
 class PasarelaPago:
-    """Interfaz/servicio simplificado. Aquí se simula el pago."""
-    def cobrar(self, cliente: Cliente, importe: float) -> ResultadoPago:
+    def cobrar(self, cliente, importe):
         if importe <= 0:
-            return ResultadoPago(ok=False, motivo="Importe inválido")
-
-        # Simulación: falla si el método de pago es "rechazado"
-        if cliente.metodo_pago.lower() == "rechazado":
-            return ResultadoPago(ok=False, motivo="Pago rechazado por la pasarela")
-
-        return ResultadoPago(ok=True, id_transaccion="TX-FAKE-0001")
+            return (False, "Importe inválido")
+        if cliente.metodo_pago == "rechazado":
+            return (False, "Pago rechazado")
+        return (True, "TX-0001")
 
 
 # =========================
-# Supermercado (orquestación)
+# Supermercado (servicios)
 # =========================
 
 class Supermercado:
-    def __init__(self, nombre: str, pasarela_pago: PasarelaPago) -> None:
+    def __init__(self, nombre, pasarela_pago):
         self.nombre = nombre
-        self._pasarela_pago = pasarela_pago
+        self.pasarela_pago = pasarela_pago
 
-        self._clientes: Dict[str, Cliente] = {}
-        self._proveedores: Dict[str, Proveedor] = {}
-        self._almacenes: Dict[str, Almacen] = {}
+        self.clientes = {}
+        self.proveedores = {}
+        self.almacenes = {}
 
-        # Mapeo simple de surtido: sku -> lista de almacenes donde se busca
-        # (en un sistema real: optimización por cercanía, coste, etc.)
-        self._ruteo_stock: Dict[str, List[str]] = {}
+        # NUEVO: compras activas
+        # id_cliente -> Cesta
+        self.compras_activas = {}
 
-    # ---- altas ----
-    def alta_cliente(self, cliente: Cliente) -> None:
-        self._clientes[cliente.id_cliente] = cliente
+    def alta_cliente(self, cliente):
+        self.clientes[cliente.id] = cliente
 
-    def alta_proveedor(self, proveedor: Proveedor) -> None:
-        self._proveedores[proveedor.id_proveedor] = proveedor
+    def alta_proveedor(self, proveedor):
+        self.proveedores[proveedor.id] = proveedor
 
-    def alta_almacen(self, almacen: Almacen) -> None:
-        self._almacenes[almacen.id_almacen] = almacen
-        # Recalcular ruteo para los SKUs que tenga este almacén
-        for sku in almacen.inventario.keys():
-            self._ruteo_stock.setdefault(sku, [])
-            if almacen.id_almacen not in self._ruteo_stock[sku]:
-                self._ruteo_stock[sku].append(almacen.id_almacen)
+    def alta_almacen(self, almacen):
+        self.almacenes[almacen.id_almacen] = almacen
 
-    # ---- compra ----
-    def confirmar_compra(self, id_cliente: str, cesta: Cesta) -> Tuple[bool, str]:
-        """
-        Flujo:
-        1) Validar cliente y cesta
-        2) Elegir almacén que pueda servir TODO
-        3) Calcular total
-        4) Cobrar
-        5) Descontar stock
-        6) Si cae bajo umbral -> generar pedido a proveedor
-        """
-        if id_cliente not in self._clientes:
-            return False, "Cliente no registrado"
-        if cesta.esta_vacia():
-            return False, "La cesta está vacía"
+    def iniciar_compra(self, id_cliente):
+        if id_cliente not in self.clientes:
+            raise ValueError("Cliente no registrado")
 
-        cliente = self._clientes[id_cliente]
+        # si ya había una cesta activa, la reemplazamos.
+        cesta = Cesta()
+        self.compras_activas[id_cliente] = cesta
+        return cesta
 
-        almacen = self._seleccionar_almacen_para_cesta(cesta)
+    def confirmar_compra(self, id_cliente):
+        if id_cliente not in self.clientes:
+            return (False, "Cliente no registrado")
+
+        if id_cliente not in self.compras_activas:
+            return (False, "No hay compra activa para este cliente")
+
+        cesta = self.compras_activas[id_cliente]
+        if cesta.vacia():
+            return (False, "Cesta vacía")
+
+        cliente = self.clientes[id_cliente]
+
+        almacen = self._seleccionar_almacen(cesta)
         if almacen is None:
-            return False, "No hay existencias suficientes para completar la compra"
+            return (False, "No hay existencias suficientes")
 
-        total = self._calcular_total(cesta, almacen)
-        pago = self._pasarela_pago.cobrar(cliente, total)
-        if not pago.ok:
-            return False, f"Pago fallido: {pago.motivo}"
+        total = almacen.total_cesta(cesta)
+        ok, info = self.pasarela_pago.cobrar(cliente, total)
+        if not ok:
+            return (False, "Pago fallido: " + info)
 
-        # Pago OK -> descontar stock
-        for sku, qty in cesta.lineas.items():
-            almacen.descontar(sku, qty)
-
-        # Reposición si procede
-        self._gestionar_reposicion(almacen)
+        almacen.descontar_cesta(cesta)
+        self._reponer_si_necesario(almacen)
 
         cesta.vaciar()
-        return True, f"Compra confirmada. Total={total:.2f}€, transacción={pago.id_transaccion}"
+        # cerramos la compra activa
+        del self.compras_activas[id_cliente]
 
-    def _seleccionar_almacen_para_cesta(self, cesta: Cesta) -> Optional[Almacen]:
-        """
-        Estrategia simple: encontrar el primer almacén que pueda servir la cesta completa.
-        (Alternativa: dividir por almacenes, backtracking, etc.)
-        """
-        candidatos = self._almacenes.values()
-        for alm in candidatos:
-            if alm.reservar_disponible(cesta):
-                return alm
+        return (True, "Compra OK. Total=%.2f€, transacción=%s" % (total, info))
+
+    def _seleccionar_almacen(self, cesta):
+        for almacen in self.almacenes.values():
+            if almacen.puede_servir_cesta(cesta):
+                return almacen
         return None
 
-    def _calcular_total(self, cesta: Cesta, almacen: Almacen) -> float:
-        total = 0.0
-        for sku, qty in cesta.lineas.items():
-            item = almacen.inventario.get(sku)
-            if item is None:
-                raise RuntimeError(f"SKU {sku} no existe en el almacén seleccionado")
-            total += item.producto.precio * qty
-        return total
-
-    def _gestionar_reposicion(self, almacen: Almacen) -> None:
-        """
-        Estrategia docente: se hace pedido al "primer proveedor disponible"
-        que tenga el SKU en su catálogo (si lo hay).
-        """
+    def _reponer_si_necesario(self, almacen):
         repos = almacen.reposiciones_necesarias()
-        if not repos:
+        if len(repos) == 0:
             return
 
-        lineas_a_pedir: List[Tuple[str, int]] = []
-        for sku, qty in repos:
-            proveedor = self._buscar_proveedor_para_sku(sku)
+        for sku, cantidad in repos:
+            proveedor = self._buscar_proveedor(sku)
             if proveedor is None:
-                # En real: alertar, registrar incidencia, etc.
                 continue
-            lineas_a_pedir.append((sku, qty))
 
-            pedido = proveedor.crear_pedido(almacen.id_almacen, [(sku, qty)])
+            pedido = PedidoProveedor(proveedor, almacen, [(sku, cantidad)])
             pedido.enviar()
 
-            # Simulación de recepción inmediata:
-            pedido.marcar_recibido()
-            almacen.recibir_reposicion(sku, qty)
+            servido = proveedor.servir_pedido(pedido)
+            if servido:
+                pedido.recibir()
+                almacen.recibir_reposicion(sku, cantidad)
 
-    def _buscar_proveedor_para_sku(self, sku: str) -> Optional[Proveedor]:
-        for prov in self._proveedores.values():
-            if sku in prov.catalogo:
+    def _buscar_proveedor(self, sku):
+        for prov in self.proveedores.values():
+            if prov.puede_servir(sku):
                 return prov
         return None
 
 
 # =========================
-# DEMO (uso docente)
+# DEMO
 # =========================
 
-def demo() -> None:
+def demo():
     pasarela = PasarelaPago()
     market = Supermercado("SuperEjemplo", pasarela)
 
-    # Productos
-    leche = Producto("SKU-LECHE", "Leche entera 1L", 1.15)
-    pan = Producto("SKU-PAN", "Pan barra", 0.85)
+    # Productos con TipoProducto
+    leche = Producto("SKU-LECHE", "Leche entera 1L", 1.15, TipoProducto.FRESCO)
+    guisantes = Producto("SKU-GUIS", "Guisantes congelados", 1.60, TipoProducto.CONGELADO)
+    atun = Producto("SKU-ATUN", "Atún en lata", 1.20, TipoProducto.ENCONSERVA)
 
-    # Almacén con umbrales
-    almacen_central = Almacen(
-        "ALM-CENTRAL",
-        inventario={
-            leche.sku: StockItem(leche, cantidad=5, umbral_reposicion=3, objetivo_reposicion=10),
-            pan.sku: StockItem(pan, cantidad=20, umbral_reposicion=10, objetivo_reposicion=30),
-        },
-    )
-    market.alta_almacen(almacen_central)
+    # Almacén
+    a1 = Almacen("ALM-1")
+    a1.alta_producto(leche, cantidad_inicial=5, umbral_reposicion=3, objetivo_reposicion=10)
+    a1.alta_producto(guisantes, cantidad_inicial=4, umbral_reposicion=2, objetivo_reposicion=8)
+    a1.alta_producto(atun, cantidad_inicial=20, umbral_reposicion=10, objetivo_reposicion=30)
+    market.alta_almacen(a1)
 
     # Proveedor
-    proveedor = Proveedor(
-        "PROV-01",
-        "Lácteos y Pan S.A.",
-        catalogo={leche.sku: 0.60, pan.sku: 0.30},
-    )
-    market.alta_proveedor(proveedor)
+    prov1 = Proveedor("PROV-1", "Proveedor Uno", catalogo_skus=[leche.sku, guisantes.sku, atun.sku])
+    market.alta_proveedor(prov1)
 
     # Cliente
-    cliente = Cliente("CLI-01", "Ana", metodo_pago="tarjeta")
-    market.alta_cliente(cliente)
+    c1 = Cliente("CLI-1", "Ana", metodo_pago="tarjeta")
+    market.alta_cliente(c1)
 
-    # Compra: iniciar -> cesta -> añadir/quitar -> confirmar
-    cesta = cliente.iniciar_compra()
-    cesta.anadir(leche.sku, 3)     # dejará la leche en 2 (por debajo del umbral=3) -> dispara reposición
-    cesta.anadir(pan.sku, 2)
-    cesta.quitar(pan.sku, 1)
+    # (1) iniciar_compra como servicio del supermercado
+    cesta = market.iniciar_compra(c1.id)
+    cesta.anadir(leche.sku, 3)      # dejará leche en 2 -> repone
+    cesta.anadir(guisantes.sku, 1)
+    cesta.anadir(atun.sku, 2)
+    cesta.quitar(atun.sku, 1)
 
-    ok, msg = market.confirmar_compra(cliente.id_cliente, cesta)
+    ok, msg = market.confirmar_compra(c1.id)
     print(ok, msg)
 
-    # Ver stock final (tras reposición simulada)
-    print("Stock leche:", almacen_central.inventario[leche.sku].cantidad)
-    print("Stock pan:", almacen_central.inventario[pan.sku].cantidad)
+    print("Stock leche:", a1.stock[leche.sku])
+    print("Stock guisantes:", a1.stock[guisantes.sku])
+    print("Stock atún:", a1.stock[atun.sku])
 
 
 if __name__ == "__main__":
