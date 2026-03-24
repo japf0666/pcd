@@ -1,6 +1,7 @@
-#3. Implementa un sistema que permita construir pizzas con ingredientes específicos y deferentes tamaños (pequeña, mediana y familiar). 
+# Implementa un sistema que permita construir pizzas con ingredientes específicos y 
+# diferentes tamaños (pequeña, mediana y familiar). 
 
-#SOLUCIÓN: Requiere del patrón Builder.
+# SOLUCIÓN: Requiere del patrón Builder.
 
 
 # Clase que representa el producto final a construir
@@ -16,7 +17,6 @@ class Pizza:
         return f"Pizza {self.tipo} - Tamaño: {self.tamaño}, Masa: {self.masa}, Salsa: {self.salsa}, Ingredientes: {', '.join(self.ingredientes)}"
 
 # Clase raiz  Builder que define métodos para construir las partes de la Pizza
-
 class PizzaBuilder:
     def __init__(self):
         self.pizza = Pizza()
