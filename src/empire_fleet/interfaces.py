@@ -1,35 +1,43 @@
 from abc import ABC, abstractmethod
 
 
-class InterfazConsultaRepuestos(ABC):
+class IServiciosCompras(ABC):
     """
     Interfaz segregada para clientes que solo consultan/compran repuestos.
     """
 
     @abstractmethod
-    def consultar_repuestos_disponibles(self, almacen: object) -> list[object]:
+    def consultar_repuestos(self, comandante: object) -> list[object]:
         pass
 
     @abstractmethod
-    def solicitar_repuesto(self, almacen: object, nombre_repuesto: str, cantidad: int) -> str:
+    def proveer_repuesto(self, comandante: object, nombre_repuesto: str, cantidad: int) -> str:
+        pass
+
+    @abstractmethod
+    def solicitar_repuesto(self, comandante: object, nombre_repuesto: str, cantidad: int) -> str:
         pass
 
 
-class InterfazGestionInventario(ABC):
+class IGestionInventario(ABC):
     """
     Interfaz segregada para usuarios que mantienen el inventario.
     """
 
     @abstractmethod
-    def alta_repuesto(self, repuesto: object) -> None:
+    def alta_repuesto(self, operario: object, repuesto: object) -> None:
         pass
 
     @abstractmethod
-    def eliminar_repuesto(self, nombre_repuesto: str) -> None:
+    def eliminar_repuesto(self, operario: object, nombre_repuesto: str) -> None:
         pass
 
     @abstractmethod
-    def reponer_stock(self, nombre_repuesto: str, cantidad: int) -> None:
+    def reponer_stock(self, operario: object, nombre_repuesto: str, cantidad: int) -> None:
+        pass
+
+    @abstractmethod
+    def buscar_repuesto(self, operario: object, nombre_repuesto: str) -> object:
         pass
 
 
@@ -54,6 +62,10 @@ class Nave(ABC):
     def __init__(self, nombre: str, catalogo_repuestos: list[str]) -> None:
         self.nombre: str = nombre
         self.catalogo_repuestos: list[str] = list(catalogo_repuestos)
+        self.comandante: object = None  # Se asignará un comandante posteriormente
+
+    def asignar_comandante(self, comandante: object) -> None:
+        self.comandante = comandante
 
     def consultar_catalogo(self) -> list[str]:
         return list(self.catalogo_repuestos)

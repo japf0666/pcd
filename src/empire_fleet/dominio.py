@@ -1,11 +1,13 @@
 from enumeraciones import UbicacionEstacion, ClaseNaveEstelar
 from excepciones import (
     DatoInvalidoError,
+    RepuestoNoAutorizadoError,
     StockInsuficienteError,
     RepuestoNoEncontradoError,
+    UsuarioNoAutorizadoError
 )
-from interfaces import Nave, UnidadCombate, InterfazGestionInventario
-
+from interfaces import Nave, UnidadCombate, IGestionInventario, IServiciosCompras
+from usuarios import Comandante, OperarioAlmacen
 
 class Repuesto:
     def __init__(self, nombre: str, proveedor: str, cantidad: int, precio: float) -> None:
@@ -47,7 +49,8 @@ class Repuesto:
         )
 
 
-class Almacen(InterfazGestionInventario):
+class Almacen(IServiciosCompras, IGestionInventario):
+
     def __init__(self, nombre: str, localizacion: str) -> None:
         if not nombre or not isinstance(nombre, str):
             raise DatoInvalidoError("El nombre del almacén debe ser un texto no vacío.")
@@ -57,39 +60,80 @@ class Almacen(InterfazGestionInventario):
         self.nombre: str = nombre
         self.localizacion: str = localizacion
         self._catalogo: dict[str, Repuesto] = {}
+        self.comandantes: list[Comandante] = []
+        self.operarios: list[OperarioAlmacen] = []
 
-    def alta_repuesto(self, repuesto: Repuesto) -> None:
+    def alta_comandante(self, comandante: Comandante) -> None:
+        if not isinstance(comandante, Comandante):
+            raise DatoInvalidoError("Solo se pueden registrar objetos de tipo Comandante.")
+        self.comandantes.append(comandante)
+
+    def alta_operario(self, operario: OperarioAlmacen) -> None:
+        if not isinstance(operario, OperarioAlmacen):
+            raise DatoInvalidoError("Solo se pueden registrar objetos de tipo OperarioAlmacen.")
+        self.operarios.append(operario)
+
+
+    # Implementación de IGestionInventario
+    def alta_repuesto(self, operario: OperarioAlmacen, repuesto: Repuesto) -> None:
+        
+        if operario not in self.operarios:
+            raise UsuarioNoAutorizadoError(f"El operario '{operario.nombre}' no está registrado en el almacén.")
         if not isinstance(repuesto, Repuesto):
             raise DatoInvalidoError("Solo se pueden dar de alta objetos de tipo Repuesto.")
-
+        
         if repuesto.nombre in self._catalogo:
             existente = self._catalogo[repuesto.nombre]
             existente.incrementar_stock(repuesto.get_cantidad())
         else:
             self._catalogo[repuesto.nombre] = repuesto
 
-    def eliminar_repuesto(self, nombre_repuesto: str) -> None:
+    def eliminar_repuesto(self, operario: OperarioAlmacen, nombre_repuesto: str) -> None:
+        if operario not in self.operarios:
+            raise UsuarioNoAutorizadoError(f"El operario '{operario.nombre}' no está registrado en el almacén.")
         if nombre_repuesto not in self._catalogo:
             raise RepuestoNoEncontradoError(f"No existe el repuesto '{nombre_repuesto}' en el almacén.")
         del self._catalogo[nombre_repuesto]
 
-    def reponer_stock(self, nombre_repuesto: str, cantidad: int) -> None:
-        repuesto = self.buscar_repuesto(nombre_repuesto)
+    def reponer_stock(self, operario: OperarioAlmacen, nombre_repuesto: str, cantidad: int) -> None:
+        if operario not in self.operarios:
+            raise UsuarioNoAutorizadoError(f"El operario '{operario.nombre}' no está registrado en el almacén.")
+        repuesto = self.buscar_repuesto(operario, nombre_repuesto)
         repuesto.incrementar_stock(cantidad)
 
-    def buscar_repuesto(self, nombre_repuesto: str) -> Repuesto:
+    def buscar_repuesto(self, operario: OperarioAlmacen, nombre_repuesto: str) -> Repuesto:
+        if operario not in self.operarios:
+            raise UsuarioNoAutorizadoError(f"El operario '{operario.nombre}' no está registrado en el almacén.")
         if nombre_repuesto not in self._catalogo:
             raise RepuestoNoEncontradoError(f"No existe el repuesto '{nombre_repuesto}' en el almacén.")
         return self._catalogo[nombre_repuesto]
 
-    def listar_repuestos(self) -> list[Repuesto]:
+    # Implementación de IServiciosCompras
+    def consultar_repuestos(self, comandante: Comandante) -> list[Repuesto]:
+        #if comandante not in self.comandantes:
+         #   raise UsuarioNoAutorizadoError(f"El comandante '{comandante.nombre}' no está registrado en el almacén.")
         return list(self._catalogo.values())
 
-    def vender_repuesto(self, nombre_repuesto: str, cantidad: int) -> float:
-        repuesto = self.buscar_repuesto(nombre_repuesto)
+    def proveer_repuesto(self, comandante: Comandante, nombre_repuesto: str, cantidad: int) -> float:
+        if comandante not in self.comandantes:
+            raise UsuarioNoAutorizadoError(f"El comandante '{comandante.nombre}' no está registrado en el almacén.")
+        repuesto = self.buscar_repuesto(comandante, nombre_repuesto)
         repuesto.decrementar_stock(cantidad)
         return repuesto.precio * cantidad
+    
+    def solicitar_repuesto(self, comandante: Comandante, nombre_repuesto: str, cantidad: int) -> str:
+        if not comandante.nave.admite_repuesto(nombre_repuesto):
+            raise RepuestoNoAutorizadoError(
+                f"La nave '{comandante.nave.nombre}' no admite el repuesto '{nombre_repuesto}'."
+            )
 
+        coste = self.proveer_repuesto(comandante, nombre_repuesto, cantidad)
+        return (
+            f"Comandante '{comandante.nombre}': compra realizada -> "
+            f"{cantidad} unidad(es) de '{nombre_repuesto}' para '{comandante.nave.nombre}'. "
+            f"Coste total: {coste:.2f} créditos."
+        )        
+    
     def __str__(self) -> str:
         return f"Almacén(nombre='{self.nombre}', localización='{self.localizacion}')"
 

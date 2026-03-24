@@ -7,11 +7,16 @@ from excepciones import MiImperioError
 
 def imprimir_catalogo_filtrado(comandante: Comandante, almacen: Almacen) -> None:
     print(f"\nRepuestos disponibles para la nave '{comandante.nave.nombre}' en {almacen.nombre}:")
-    disponibles = comandante.consultar_repuestos_disponibles(almacen)
+    
+    disponibles: list[Repuesto] = []
+    for repuesto in almacen.consultar_repuestos(comandante):
+        if comandante.nave.admite_repuesto(repuesto.nombre):
+            disponibles.append(repuesto)
+
     if not disponibles:
         print("  No hay repuestos compatibles.")
         return
-
+    
     for repuesto in disponibles:
         print(f"  - {repuesto}")
 
@@ -60,53 +65,56 @@ def demo() -> None:
 
     operario = OperarioAlmacen("TK-421")
 
-    operario.registrar_repuesto(almacen_central, Repuesto("Escudo deflector", "Kuat Systems", 10, 5000))
-    operario.registrar_repuesto(almacen_central, Repuesto("Motor iónico", "Sienar Fleet", 6, 3500))
-    operario.registrar_repuesto(almacen_central, Repuesto("Panel solar", "Sienar Fleet", 15, 1200))
-    operario.registrar_repuesto(almacen_central, Repuesto("Sistema de puntería", "BlasTech", 4, 2200))
+    almacen_central.alta_operario(operario)
+    almacen_central.alta_repuesto(operario, Repuesto("Escudo deflector", "Kuat Systems", 10, 5000))
+    almacen_central.alta_repuesto(operario, Repuesto("Motor iónico", "Sienar Fleet", 6, 3500))
+    almacen_central.alta_repuesto(operario, Repuesto("Panel solar", "Sienar Fleet", 15, 1200))
+    almacen_central.alta_repuesto(operario, Repuesto("Sistema de puntería", "BlasTech", 4, 2200))
 
     print("\n--- Repuestos en almacén ---")
-    for repuesto in almacen_central.listar_repuestos():
+    for repuesto in almacen_central.consultar_repuestos(operario):
         print(repuesto)
 
     comandante_executor = Comandante("Darth Vader", destructor)
+    almacen_central.alta_comandante(comandante_executor)
     comandante_tie = Comandante("Maarek Stele", caza)
+    almacen_central.alta_comandante(comandante_tie)
 
     imprimir_catalogo_filtrado(comandante_executor, almacen_central)
     imprimir_catalogo_filtrado(comandante_tie, almacen_central)
 
     print("\n--- Compra correcta ---")
     try:
-        mensaje = comandante_executor.solicitar_repuesto(almacen_central, "Motor iónico", 2)
+        mensaje = almacen_central.solicitar_repuesto(comandante_executor, "Motor iónico", 2)
         print(mensaje)
     except MiImperioError as e:
         print("Error controlado:", e)
 
     print("\n--- Error: repuesto no autorizado para la nave ---")
     try:
-        mensaje = comandante_executor.solicitar_repuesto(almacen_central, "Panel solar", 1)
+        mensaje = almacen_central.solicitar_repuesto(comandante_executor, "Panel solar", 1)
         print(mensaje)
     except MiImperioError as e:
         print("Error controlado:", e)
 
     print("\n--- Error: stock insuficiente ---")
     try:
-        mensaje = comandante_tie.solicitar_repuesto(almacen_central, "Sistema de puntería", 10)
+        mensaje = almacen_central.solicitar_repuesto(comandante_tie, "Sistema de puntería", 10)
         print(mensaje)
     except MiImperioError as e:
         print("Error controlado:", e)
 
     print("\n--- Reposición de stock ---")
     try:
-        operario.reponer(almacen_central, "Sistema de puntería", 10)
+        almacen_central.reponer_stock(operario, "Sistema de puntería", 10)
         print("Stock repuesto correctamente.")
-        print(almacen_central.buscar_repuesto("Sistema de puntería"))
+        print(almacen_central.buscar_repuesto(operario, "Sistema de puntería"))
     except MiImperioError as e:
         print("Error controlado:", e)
 
     print("\n--- Compra tras reposición ---")
     try:
-        mensaje = comandante_tie.solicitar_repuesto(almacen_central, "Sistema de puntería", 5)
+        mensaje = almacen_central.solicitar_repuesto(comandante_tie, "Sistema de puntería", 5)
         print(mensaje)
     except MiImperioError as e:
         print("Error controlado:", e)

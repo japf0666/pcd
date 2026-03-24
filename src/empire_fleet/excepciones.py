@@ -16,3 +16,6 @@ class RepuestoNoAutorizadoError(MiImperioError):
 
 class DatoInvalidoError(MiImperioError):
     pass
+
+class UsuarioNoAutorizadoError(MiImperioError):
+    pass
