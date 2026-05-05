@@ -1,6 +1,5 @@
-#8. Crea un programa que conecte una interfaz de base de datos antigua con una nueva interfaz de base de datos utilizando un adaptador.
-
-
+# Crea un programa que conecte una interfaz de base de datos antigua 
+# con una nueva interfaz de base de datos utilizando un adaptador.
 
 #SOLUCION: Es necesario usar el patrón Adapter.
 
@@ -23,12 +22,15 @@ class OldDatabase:
 
 
 # Adaptador que permite usar OldDatabase como si fuera NewDatabaseInterface
-#hereda de la nueva interfaz, porque es lo que queremos ofrecer, pero se relaciona con la legacy, porque  al final interactuamos con ella (Slide 26)
+# hereda de la nueva interfaz, porque es lo que queremos ofrecer, 
+# pero se relaciona con la legacy, porque  al final interactuamos con ella (Slide 26)
 
-#El adaptador no hereda de la clase original, sino que la contiene. En este caso, DatabaseAdapter no hereda de OldDatabase, sino que tiene un atributo 
+# El adaptador no hereda de la clase original, sino que la contiene. En este caso, DatabaseAdapter 
+# no hereda de OldDatabase, sino que tiene un atributo 
 # self.old_db que es una instancia de OldDatabase. Por eso es un patron adapter de objeto.
 
-#Si heredase, seria de clase, y aunque seria posible, heredar de una clase que es legacy, podria no ser lo correcto (mejor desacoplarlo -> mejor flexibilidad y compatibilidad futura)-
+# Si heredase, seria de clase, y aunque seria posible, heredar de una clase que es legacy, 
+# podria no ser lo correcto (mejor desacoplarlo -> mejor flexibilidad y compatibilidad futura)-
 class DatabaseAdapter(NewDatabaseInterface):
     def __init__(self, old_db: OldDatabase):
         self.old_db = old_db

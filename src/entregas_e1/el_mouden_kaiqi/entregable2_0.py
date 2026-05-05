@@ -158,6 +158,10 @@ class Repuesto: # Clase que representa un repuesto, con atributos privados como 
         self.__cantidad += cantidad
 
     def retirar_stock(self, cantidad): # Método para retirar stock del repuesto, que solo puede ser modificado a través de este método para controlar las modificaciones y evitar cantidades negativas
+        '''
+        
+        '''
+        
         if cantidad <= 0:
             raise ValueError
         if cantidad <= self.__cantidad:
